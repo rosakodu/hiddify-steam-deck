@@ -35,13 +35,13 @@ More details: [Steam Deck VPN for Game Mode and Desktop Mode](docs/steam-deck-vp
 
 ## Latest Release
 
-Latest stable build: **v1.3.15.2**
+Latest stable build: **v1.3.15.3**
 
-- Release: https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/tag/v1.3.15.2
-- Installer: `Hiddify-linux-x64-v1.3.15.2.bin`
-- Decky plugin: `decky-hiddify-v1.3.15.2.zip`
+- Release: https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/tag/v1.3.15.3
+- Installer: `Hiddify-linux-x64-v1.3.15.3.bin`
+- Decky plugin: `decky-hiddify-v1.3.15.3.zip`
 
-This hotfix keeps the Game Mode server selection release and fixes the installer uninstall flow: running the `.bin` again now shows the reinstall/uninstall menu instead of forcing an immediate clean reinstall. Thanks to @SEVENID for reporting the regression.
+This hotfix keeps the Game Mode server selection release and fixes SteamOS authorization prompts for DNS/domain/default-route changes after reinstall or reboot.
 
 ## Demo
 
@@ -69,8 +69,8 @@ This demo shows the Decky plugin in Game Mode with both single-server and multi-
 
 | File | Description |
 |------|-------------|
-| `Hiddify-linux-x64-v1.3.15.2.bin` | Self-extracting installer (~51 MB). Installs the desktop client and bundled Decky plugin |
-| `decky-hiddify-v1.3.15.2.zip` | Standalone Decky plugin archive for manual install or debugging |
+| `Hiddify-linux-x64-v1.3.15.3.bin` | Self-extracting installer (~51 MB). Installs the desktop client and bundled Decky plugin |
+| `decky-hiddify-v1.3.15.3.zip` | Standalone Decky plugin archive for manual install or debugging |
 | `installer-src/` | Installer source (install.sh + all bundled files) |
 
 ---
@@ -91,9 +91,9 @@ Open **Konsole** and run:
 
 ```bash
 cd ~/Downloads
-curl -L -o Hiddify-linux-x64-v1.3.15.2.bin \
-  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.15.2/Hiddify-linux-x64-v1.3.15.2.bin
-chmod +x Hiddify-linux-x64-v1.3.15.2.bin
+curl -L -o Hiddify-linux-x64-v1.3.15.3.bin \
+  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.15.3/Hiddify-linux-x64-v1.3.15.3.bin
+chmod +x Hiddify-linux-x64-v1.3.15.3.bin
 ```
 
 ### 2. Run the installer
@@ -101,7 +101,7 @@ chmod +x Hiddify-linux-x64-v1.3.15.2.bin
 From the same Konsole window:
 
 ```bash
-bash ~/Downloads/Hiddify-linux-x64-v1.3.15.2.bin
+bash ~/Downloads/Hiddify-linux-x64-v1.3.15.3.bin
 ```
 
 The installer automatically:
@@ -140,10 +140,10 @@ The `.bin` installer already installs the bundled Decky plugin. Manual plugin in
 
 ```bash
 cd ~/Downloads
-curl -L -o decky-hiddify-v1.3.15.2.zip \
-  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.15.2/decky-hiddify-v1.3.15.2.zip
+curl -L -o decky-hiddify-v1.3.15.3.zip \
+  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.15.3/decky-hiddify-v1.3.15.3.zip
 sudo rm -rf /home/deck/homebrew/plugins/decky-hiddify
-sudo unzip -o decky-hiddify-v1.3.15.2.zip -d /home/deck/homebrew/plugins/
+sudo unzip -o decky-hiddify-v1.3.15.3.zip -d /home/deck/homebrew/plugins/
 sudo systemctl restart plugin_loader
 ```
 
@@ -250,7 +250,7 @@ cd ~/.local/share/app.hiddify.com
 
 ---
 
-## Decky Plugin (v1.3.15.2)
+## Decky Plugin (v1.3.15.3)
 
 The `decky-hiddify` plugin adds VPN control to Quick Access Menu (the `···` button).
 
@@ -311,7 +311,7 @@ Three large upstream binaries are **not** included in this repo. Download them f
 Then rebuild the self-extracting installer:
 
 ```bash
-makeself --nox11 release/installer-src/ Hiddify-linux-x64-v1.3.15.2.bin "Hiddify VPN v1.3.15.2" bash setup.sh
+makeself --nox11 release/installer-src/ Hiddify-linux-x64-v1.3.15.3.bin "Hiddify VPN v1.3.15.3" bash setup.sh
 ```
 
 ### Decky Plugin

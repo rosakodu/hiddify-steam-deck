@@ -249,13 +249,10 @@ chmod 0440 "$SUDOERS_FILE"
 ok "Passwordless sudo configured for HiddifyCli and cleanup helpers"
 
 # Polkit rule — allow deck user to configure DNS/routes without password prompts.
-# Written to /etc/polkit-1/rules.d/ which is on the writable partition and
-# survives SteamOS A/B updates (unlike /usr/share which is squashfs).
-# The plugin also re-applies this rule on every load as a belt-and-suspenders.
-mkdir -p /etc/polkit-1/rules.d
-POLKIT_TMP="/etc/polkit-1/rules.d/.10-hiddify.rules.tmp"
-cat > "$POLKIT_TMP" << 'POLKIT'
-polkit.addRule(function(action, subject) {
+# SteamOS can ask through either systemd-resolved (resolve1) or systemd-networkd
+# (network1), depending on the caller. Write both /etc and /usr/share locations:
+# /etc is the writable overlay; /usr/share is the system policy fallback.
+POLKIT_RULE='polkit.addRule(function(action, subject) {
     var YES = polkit.Result.YES;
     var permission = {
         "org.freedesktop.resolve1.set-domains": YES,
@@ -267,6 +264,15 @@ polkit.addRule(function(action, subject) {
         "org.freedesktop.resolve1.set-llmnr": YES,
         "org.freedesktop.resolve1.set-mdns": YES,
         "org.freedesktop.resolve1.revert": YES,
+        "org.freedesktop.network1.set-domains": YES,
+        "org.freedesktop.network1.set-default-route": YES,
+        "org.freedesktop.network1.set-dns-servers": YES,
+        "org.freedesktop.network1.set-dns-over-tls": YES,
+        "org.freedesktop.network1.set-dnssec": YES,
+        "org.freedesktop.network1.set-dnssec-negative-trust-anchors": YES,
+        "org.freedesktop.network1.set-llmnr": YES,
+        "org.freedesktop.network1.set-mdns": YES,
+        "org.freedesktop.network1.revert-dns": YES,
         "org.freedesktop.NetworkManager.network-control": YES,
         "org.freedesktop.NetworkManager.reload": YES,
         "org.freedesktop.NetworkManager.settings.modify.global-dns": YES,
@@ -277,11 +283,33 @@ polkit.addRule(function(action, subject) {
         return permission[action.id];
     }
 });
-POLKIT
-chmod 0644 "$POLKIT_TMP"
-mv -f "$POLKIT_TMP" /etc/polkit-1/rules.d/10-hiddify.rules
-systemctl restart polkit 2>/dev/null || true
-ok "Polkit rule configured (no password for DNS/route/NM changes)"
+'
+
+install_polkit_rule() {
+    local polkit_dir="$1"
+    local polkit_tmp="$polkit_dir/.10-hiddify.rules.tmp"
+    mkdir -p "$polkit_dir" 2>/dev/null || return 1
+    printf '%s' "$POLKIT_RULE" > "$polkit_tmp" 2>/dev/null || return 1
+    chown root:root "$polkit_tmp" 2>/dev/null || true
+    chmod 0644 "$polkit_tmp" 2>/dev/null || return 1
+    mv -f "$polkit_tmp" "$polkit_dir/10-hiddify.rules" 2>/dev/null || return 1
+}
+
+POLKIT_WRITTEN=0
+for POLKIT_DIR in /etc/polkit-1/rules.d /usr/share/polkit-1/rules.d; do
+    if install_polkit_rule "$POLKIT_DIR"; then
+        POLKIT_WRITTEN=1
+        info "  polkit rule written to $POLKIT_DIR"
+    else
+        warn "  could not write polkit rule to $POLKIT_DIR"
+    fi
+done
+if [ "$POLKIT_WRITTEN" -eq 1 ]; then
+    systemctl restart polkit 2>/dev/null || true
+    ok "Polkit rule configured (no password for DNS/route/NM changes)"
+else
+    warn "Polkit rule was not installed; DNS/route changes may still ask for authentication"
+fi
 
 # GUI wrapper script (used by the desktop shortcut)
 cat > "$INSTALL_DIR/hiddify-gui" << 'WRAPPER'

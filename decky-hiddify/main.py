@@ -1788,8 +1788,9 @@ WantedBy=default.target
         except Exception as e:
             decky.logger.warning(f"Could not write sudoers: {e}")
 
-        # /usr/share/polkit-1/rules.d is read-only on SteamOS (squashfs).
-        # /etc/polkit-1/rules.d is on the writable partition and takes precedence.
+        # Re-write both policy locations. /etc is the writable overlay, while
+        # /usr/share is the system policy fallback when SteamOS resets /etc.
+        polkit_written = False
         for polkit_dir in ("/etc/polkit-1/rules.d", "/usr/share/polkit-1/rules.d"):
             try:
                 os.makedirs(polkit_dir, exist_ok=True)
@@ -1808,6 +1809,15 @@ polkit.addRule(function(action, subject) {
         "org.freedesktop.resolve1.set-llmnr": YES,
         "org.freedesktop.resolve1.set-mdns": YES,
         "org.freedesktop.resolve1.revert": YES,
+        "org.freedesktop.network1.set-domains": YES,
+        "org.freedesktop.network1.set-default-route": YES,
+        "org.freedesktop.network1.set-dns-servers": YES,
+        "org.freedesktop.network1.set-dns-over-tls": YES,
+        "org.freedesktop.network1.set-dnssec": YES,
+        "org.freedesktop.network1.set-dnssec-negative-trust-anchors": YES,
+        "org.freedesktop.network1.set-llmnr": YES,
+        "org.freedesktop.network1.set-mdns": YES,
+        "org.freedesktop.network1.revert-dns": YES,
         "org.freedesktop.NetworkManager.network-control": YES,
         "org.freedesktop.NetworkManager.reload": YES,
         "org.freedesktop.NetworkManager.settings.modify.global-dns": YES,
@@ -1823,10 +1833,12 @@ polkit.addRule(function(action, subject) {
                     f.write(polkit_rule)
                 os.chmod(tmp_path, 0o644)
                 os.replace(tmp_path, target_path)
+                polkit_written = True
                 decky.logger.info(f"polkit rule written to {polkit_dir}")
-                break  # success — no need to try fallback
             except Exception as e:
                 decky.logger.warning(f"Could not write polkit rule to {polkit_dir}: {e}")
+        if polkit_written:
+            subprocess.run(["systemctl", "restart", "polkit"], check=False)
 
         if os.path.exists(CLI_PATH) and not self._check_caps():
             self._apply_caps()
