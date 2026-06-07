@@ -3,6 +3,7 @@ import {
   PanelSection,
   PanelSectionRow,
   ButtonItem,
+  Focusable,
   staticClasses,
   Spinner,
 } from "@decky/ui";
@@ -34,6 +35,33 @@ class ErrBoundary extends Component<{ children: ReactNode }, { err: string | nul
   }
 }
 
+// ── Focusable with visible focus highlight ───────────────────────────────────
+// In Game Mode, ButtonItem highlights itself when focused by the gamepad, but a
+// custom Focusable does not. Track focus via onGamepadFocus/onGamepadBlur and
+// merge an extra highlight style so the user can see which control is selected.
+function FocusButton({
+  baseStyle,
+  focusStyle,
+  children,
+  onGamepadFocus,
+  onGamepadBlur,
+  ...rest
+}: any) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <Focusable
+      {...rest}
+      onGamepadFocus={(e: any) => { setFocused(true); onGamepadFocus?.(e); }}
+      onGamepadBlur={(e: any) => { setFocused(false); onGamepadBlur?.(e); }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={{ ...baseStyle, ...(focused ? focusStyle : {}) }}
+    >
+      {children}
+    </Focusable>
+  );
+}
+
 // ── Icons ───────────────────────────────────────────────────────────────────
 const ShieldIcon = ({ color = "currentColor" }: { color?: string }) => (
   <svg viewBox="0 0 24 24" width="1em" height="1em" fill={color}>
@@ -52,16 +80,17 @@ const getInstallStatus = callable<[], {
 }>("get_install_status");
 const repair           = callable<[], { success: boolean; message: string }>("repair");
 const getLogs          = callable<[], string>("get_logs");
-const getProfiles      = callable<[], Array<{ id: string; name: string; active: boolean }>>("get_profiles");
+const getProfiles      = callable<[], Array<{ id: string; name: string; active: boolean; remote?: boolean }>>("get_profiles");
 const switchProfile    = callable<[string], { success: boolean; message: string }>("switch_profile");
 const getProfileServers = callable<[string], ServerInfo>("get_profile_servers");
 const switchServer      = callable<[string, string, string], { success: boolean; message: string }>("switch_server");
+const refreshProfile    = callable<[string], { success: boolean; message: string; server_count?: number; selectable?: boolean }>("refresh_profile");
 
 interface VpnStatus {
   connected: boolean; running: boolean; vpn_ip: string; install_state: string; active_profile: string;
   active_server?: string; server_selectable?: boolean;
 }
-interface Profile { id: string; name: string; active: boolean; }
+interface Profile { id: string; name: string; active: boolean; remote?: boolean; }
 interface ServerEntry { tag: string; name: string; type: string; server?: string; port?: string; }
 interface ServerSelection { mode: string; tag: string; name: string; valid: boolean; }
 interface ServerInfo {
@@ -70,6 +99,7 @@ interface ServerInfo {
   servers: ServerEntry[];
   selected: ServerSelection;
   count: number;
+  remote?: boolean;
   error?: string;
 }
 
@@ -83,6 +113,7 @@ function VpnPanel() {
   const [switching, setSwitching] = useState(false);
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [serverSwitching, setServerSwitching] = useState(false);
+  const [refreshingProfileId, setRefreshingProfileId] = useState<string | null>(null);
   const [showLogs, setShowLogs]   = useState(false);
   const [logs, setLogs]           = useState("");
 
@@ -121,7 +152,10 @@ function VpnPanel() {
       }
       setStatus(prev => ({ ...prev, ...s }));
     });
-    const iv = setInterval(fetchStatus, 5000);
+    const iv = setInterval(() => {
+      fetchStatus();
+      fetchProfiles();
+    }, 5000);
     return () => { removeEventListener("vpn_status_changed", listener); clearInterval(iv); };
   }, []);
 
@@ -195,6 +229,27 @@ function VpnPanel() {
     }
   };
 
+  const handleRefreshProfile = async (profileId: string) => {
+    if (!profileId || loading || status.running || status.connected || refreshingProfileId) return;
+    setRefreshingProfileId(profileId);
+    try {
+      const r = await refreshProfile(profileId);
+      if (r.success) {
+        await fetchProfiles();
+        const currentActive = profiles.find(p => p.active);
+        await fetchServerInfo(profileId === currentActive?.id ? profileId : currentActive?.id);
+        await fetchStatus();
+        toaster.toast({ title: "Hiddify VPN", body: r.message, duration: 3000 });
+      } else {
+        toaster.toast({ title: "Update Error", body: r.message, duration: 5000 });
+      }
+    } catch (e: any) {
+      toaster.toast({ title: "Error", body: String(e), duration: 5000 });
+    } finally {
+      setRefreshingProfileId(null);
+    }
+  };
+
   const isOn = status.connected;
   const isBusy = loading || status.running || status.connected;
   const activeProfile = profiles.find(p => p.active);
@@ -246,25 +301,123 @@ function VpnPanel() {
           <PanelSectionRow>
             <div style={{ width: "100%", paddingTop: 4 }}>
               <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                {isBusy ? "Wait for VPN before changing profile" : "Profile"}
+                {isBusy ? "Wait for VPN before changing profile" : "Profile · ↻ updates subscription"}
               </div>
               {profiles.map(p => (
-                <ButtonItem
+                <div
                   key={p.id}
-                  onClick={() => !isBusy && !switching && !p.active && handleSwitch(p.id)}
-                  disabled={isBusy || switching || p.active}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    width: "100%",
+                    minHeight: 38,
+                    marginBottom: 8,
+                  }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{
+                  {p.remote && (
+                    <FocusButton
+                      role="button"
+                      aria-label={`Update ${p.name}`}
+                      aria-disabled={isBusy || Boolean(refreshingProfileId)}
+                      title={isBusy ? "Stop VPN before updating" : `Update ${p.name}`}
+                      onActivate={(ev: any) => {
+                        ev?.stopPropagation?.();
+                        handleRefreshProfile(p.id);
+                      }}
+                      onClick={(ev: any) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        handleRefreshProfile(p.id);
+                      }}
+                      baseStyle={{
+                        width: 34,
+                        minWidth: 34,
+                        height: 34,
+                        minHeight: 34,
+                        borderRadius: "50%",
+                        border: "1.5px solid rgba(74, 222, 128, 0.95)",
+                        background: refreshingProfileId === p.id ? "rgba(74, 222, 128, 0.28)" : "rgba(74, 222, 128, 0.16)",
+                        color: "#4ade80",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 0,
+                        fontSize: 18,
+                        fontWeight: 800,
+                        lineHeight: 1,
+                        boxShadow: "0 0 10px rgba(74, 222, 128, 0.35)",
+                        opacity: isBusy || (refreshingProfileId && refreshingProfileId !== p.id) ? 0.45 : 1,
+                        pointerEvents: isBusy || Boolean(refreshingProfileId) ? "none" : "auto",
+                        transition: "transform 0.1s ease, box-shadow 0.1s ease",
+                      }}
+                      focusStyle={{
+                        background: "rgba(74, 222, 128, 0.5)",
+                        color: "#ffffff",
+                        transform: "scale(1.12)",
+                        border: "1.5px solid #ffffff",
+                        boxShadow: "0 0 0 3px rgba(74, 222, 128, 0.95), 0 0 16px rgba(74, 222, 128, 0.8)",
+                      }}
+                    >
+                      {refreshingProfileId === p.id ? <Spinner style={{ width: 13, height: 13 }} /> : <span>↻</span>}
+                    </FocusButton>
+                  )}
+                  <FocusButton
+                    role="button"
+                    aria-label={`Select ${p.name}`}
+                    aria-disabled={isBusy || switching || refreshingProfileId === p.id}
+                    onActivate={(ev: any) => {
+                      ev?.stopPropagation?.();
+                      if (!isBusy && !switching && !p.active) handleSwitch(p.id);
+                    }}
+                    onClick={(ev: any) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      if (!isBusy && !switching && !p.active) handleSwitch(p.id);
+                    }}
+                    baseStyle={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "auto",
+                      maxWidth: p.remote ? "calc(100% - 42px)" : "100%",
+                      minHeight: 34,
+                      border: p.active ? "1px solid rgba(74, 222, 128, 0.4)" : "1px solid rgba(255,255,255,0.12)",
+                      borderRadius: 999,
+                      background: p.active ? "rgba(255,255,255,0.94)" : "rgba(255,255,255,0.14)",
+                      color: p.active ? "#111827" : "rgba(255,255,255,0.92)",
+                      padding: "6px 14px",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      lineHeight: 1.1,
+                      opacity: isBusy || switching || refreshingProfileId === p.id ? 0.55 : 1,
+                      transition: "transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease",
+                    }}
+                    focusStyle={{
+                      background: p.active ? "#ffffff" : "rgba(255,255,255,0.32)",
+                      color: p.active ? "#111827" : "#ffffff",
+                      transform: "scale(1.04)",
+                      border: "1px solid #ffffff",
+                      boxShadow: "0 0 0 3px rgba(255,255,255,0.85), 0 0 16px rgba(255,255,255,0.45)",
+                    }}
+                  >
+                    <span style={{
                       width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                      background: p.active ? "#4ade80" : "rgba(255,255,255,0.25)",
+                      background: p.active ? "#22c55e" : "rgba(255,255,255,0.38)",
                     }} />
-                    <span style={{ flex: 1 }}>{p.name}</span>
+                    <span style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {p.name}
+                    </span>
                     {p.active && (
-                      <span style={{ fontSize: 10, color: "#4ade80" }}>active</span>
+                      <span style={{ fontSize: 10, color: "rgba(17, 24, 39, 0.55)", fontWeight: 600 }}>active</span>
                     )}
-                  </div>
-                </ButtonItem>
+                  </FocusButton>
+                </div>
               ))}
             </div>
           </PanelSectionRow>

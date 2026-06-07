@@ -9,6 +9,10 @@ import socket
 import struct
 import sqlite3
 import datetime
+import re
+import ssl
+import urllib.request
+import urllib.error
 
 # Decky PluginLoader is a PyInstaller bundle that sets LD_LIBRARY_PATH to its
 # own extracted libs dir (/tmp/_MEI.../). This leaks into every subprocess and
@@ -60,6 +64,17 @@ def _compact_process_result(result: subprocess.CompletedProcess) -> dict:
         "stdout": (result.stdout or "").strip()[-500:],
         "stderr": (result.stderr or "").strip()[-500:],
     }
+
+
+def _scrub_sensitive(value):
+    """Keep debug logs useful without leaking subscription URLs or tokens."""
+    if isinstance(value, str):
+        return re.sub(r"https?://[^\s\"']+", "<URL>", value)
+    if isinstance(value, list):
+        return [_scrub_sensitive(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _scrub_sensitive(item) for key, item in value.items()}
+    return value
 
 
 class Plugin:
@@ -272,6 +287,103 @@ class Plugin:
         result["tun_up_after_cleanup"] = self._is_tun_up()
         return result
 
+    def _grpc_port_snapshot(self) -> dict:
+        ss = self._run_capture(["ss", "-ltnp"])
+        port = f":{GRPC_PORT}"
+        ss_text = "\n".join(
+            line for line in ((ss.stdout or "") + "\n" + (ss.stderr or "")).splitlines()
+            if port in line
+        )
+        fuser = self._run_capture(["/usr/bin/fuser", "-v", f"{GRPC_PORT}/tcp"])
+        return {
+            "grpc_up": self._is_grpc_up(),
+            "ss": ss_text[-1200:],
+            "fuser": _compact_process_result(fuser),
+        }
+
+    def _cleanup_grpc_port(self) -> dict:
+        result = {
+            "grpc_up_before": self._is_grpc_up(),
+            "port_before": self._grpc_port_snapshot(),
+        }
+        fuser = self._sudo_run(["/usr/bin/fuser", "-k", f"{GRPC_PORT}/tcp"])
+        result["fuser_kill"] = _compact_process_result(fuser)
+        result["grpc_up_after"] = self._is_grpc_up()
+        result["port_after"] = self._grpc_port_snapshot()
+        return result
+
+    def _list_desktop_hiddify_units(self) -> list[str]:
+        units = []
+        r = self._systemctl_user(["list-units", "--all", "--no-legend", "app-hiddify@*.service"])
+        for line in (r.stdout or "").splitlines():
+            parts = line.split()
+            if not parts:
+                continue
+            unit = parts[1] if parts[0] == "●" and len(parts) > 1 else parts[0]
+            if unit.startswith("app-hiddify@") and unit.endswith(".service"):
+                units.append(unit)
+        return units
+
+    def _desktop_hiddify_snapshot(self) -> dict:
+        units = []
+        for unit in self._list_desktop_hiddify_units():
+            active = self._systemctl_user(["is-active", unit])
+            show = self._systemctl_user([
+                "show",
+                unit,
+                "--property=ActiveState,SubState,Result,ExecMainStatus,ExecMainPID",
+            ])
+            show_map = {}
+            for line in (show.stdout or "").splitlines():
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    show_map[key] = value
+            units.append({
+                "unit": unit,
+                "active": (active.stdout or active.stderr).strip(),
+                "show": show_map,
+            })
+        pgrep = self._run_capture(["pgrep", "-a", "-x", "hiddify"])
+        return {
+            "units": units,
+            "pgrep_hiddify": _compact_process_result(pgrep),
+            "port": self._grpc_port_snapshot(),
+        }
+
+    async def _stop_desktop_hiddify_runtime(self) -> dict:
+        result = {
+            "before": self._desktop_hiddify_snapshot(),
+            "stopped_units": [],
+        }
+
+        for unit in self._list_desktop_hiddify_units():
+            stop = self._systemctl_user(["stop", unit])
+            result["stopped_units"].append({
+                "unit": unit,
+                "stop": _compact_process_result(stop),
+            })
+
+        if result["stopped_units"]:
+            await asyncio.sleep(1)
+        result["after_unit_stop"] = self._desktop_hiddify_snapshot()
+
+        if self._is_grpc_up() or result["after_unit_stop"]["pgrep_hiddify"]["rc"] == 0:
+            term = self._run_capture(["pkill", "-TERM", "-x", "hiddify"])
+            result["pkill_term_hiddify"] = _compact_process_result(term)
+            await asyncio.sleep(1)
+
+        if self._is_grpc_up():
+            kill = self._run_capture(["pkill", "-KILL", "-x", "hiddify"])
+            result["pkill_kill_hiddify"] = _compact_process_result(kill)
+            await asyncio.sleep(1)
+
+        if self._is_grpc_up():
+            result["grpc_port_cleanup"] = self._cleanup_grpc_port()
+            await asyncio.sleep(1)
+
+        result["after"] = self._desktop_hiddify_snapshot()
+        return result
+
     @staticmethod
     def _tail_file(path: str, max_lines: int = 40) -> str:
         try:
@@ -296,7 +408,7 @@ class Plugin:
                 "event": event,
                 "plugin_version": PLUGIN_VERSION,
             }
-            payload.update(fields)
+            payload.update(_scrub_sensitive(fields))
             with open(DEBUG_LOG_PATH, "a") as f:
                 f.write(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str) + "\n")
         except Exception as e:
@@ -361,20 +473,76 @@ class Plugin:
 
     # ── Profile helpers ────────────────────────────────────────────────────────
 
+    def _profile_meta(self, profile_id: str) -> dict:
+        result = {
+            "exists": False,
+            "id": profile_id,
+            "name": "",
+            "type": "",
+            "active": False,
+            "has_url": False,
+            "last_update": "",
+            "update_interval": None,
+        }
+        try:
+            db = sqlite3.connect(PROFILES_DB)
+            db.row_factory = sqlite3.Row
+            row = db.execute(
+                "SELECT id, type, active, name, url, last_update, update_interval "
+                "FROM profile_entries WHERE id = ?",
+                (profile_id,),
+            ).fetchone()
+            db.close()
+            if not row:
+                return result
+            url = str(row["url"] or "")
+            result.update({
+                "exists": True,
+                "id": row["id"],
+                "type": row["type"],
+                "active": bool(row["active"]),
+                "name": row["name"],
+                "has_url": bool(url.strip()),
+                "last_update": row["last_update"],
+                "update_interval": row["update_interval"],
+            })
+            return result
+        except Exception as e:
+            result["error"] = str(e)
+            return result
+
+    def _profile_url(self, profile_id: str) -> str:
+        try:
+            db = sqlite3.connect(PROFILES_DB)
+            row = db.execute("SELECT url FROM profile_entries WHERE id = ?", (profile_id,)).fetchone()
+            db.close()
+            return str(row[0] or "").strip() if row else ""
+        except Exception:
+            return ""
+
     def _read_profiles(self) -> list:
         try:
             db = sqlite3.connect(PROFILES_DB)
             cols = {row[1] for row in db.execute("PRAGMA table_info(profile_entries)")}
             if "active" in cols:
-                rows = db.execute(
-                    "SELECT id, name, active FROM profile_entries ORDER BY name"
-                ).fetchall()
-                result = [{"id": r[0], "name": r[1], "active": bool(r[2])} for r in rows]
+                if "url" in cols:
+                    rows = db.execute(
+                        "SELECT id, name, active, url FROM profile_entries ORDER BY name"
+                    ).fetchall()
+                    result = [
+                        {"id": r[0], "name": r[1], "active": bool(r[2]), "remote": bool(str(r[3] or "").strip())}
+                        for r in rows
+                    ]
+                else:
+                    rows = db.execute(
+                        "SELECT id, name, active FROM profile_entries ORDER BY name"
+                    ).fetchall()
+                    result = [{"id": r[0], "name": r[1], "active": bool(r[2]), "remote": False} for r in rows]
             else:
                 rows = db.execute(
                     "SELECT id, name FROM profile_entries ORDER BY name"
                 ).fetchall()
-                result = [{"id": r[0], "name": r[1], "active": False} for r in rows]
+                result = [{"id": r[0], "name": r[1], "active": False, "remote": False} for r in rows]
             db.close()
             return result
         except Exception as e:
@@ -671,7 +839,25 @@ WantedBy=default.target
         info = self._profile_server_info_from_config(profile_id, normalized["service_config"])
         info["profile_summary"] = normalized.get("profile_summary", {})
         info["service_input_summary"] = normalized.get("service_input_summary", {})
+        info["remote"] = self._profile_meta(profile_id).get("has_url", False)
         return info
+
+    def _reset_invalid_server_selection(self, profile_id: str, info: dict) -> dict:
+        selected = info.get("selected") or {}
+        result = {"changed": False, "reason": ""}
+        if selected.get("mode") != "auto" or not selected.get("fallback_reason"):
+            return result
+
+        state = self._read_server_selection_state()
+        if profile_id in state:
+            state[profile_id] = {"mode": "auto", "tag": ""}
+            write = self._write_server_selection_state(state)
+            result.update({
+                "changed": write.get("success", False),
+                "reason": selected.get("fallback_reason", ""),
+                "write": write,
+            })
+        return result
 
     @staticmethod
     def _referenced_outbound_tags(outbound: dict) -> set[str]:
@@ -1207,6 +1393,199 @@ WantedBy=default.target
         result["success"] = True
         return result
 
+    # SteamOS system CA bundles. Decky's bundled Python often resolves its own
+    # OpenSSL verify paths to a location without the CA store, so HTTPS
+    # subscription downloads fail with CERTIFICATE_VERIFY_FAILED. Point the SSL
+    # context at the system bundle explicitly.
+    _CA_BUNDLES = (
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/ssl/cert.pem",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        "/etc/ca-certificates/extracted/tls-ca-bundle.pem",
+    )
+
+    def _ssl_context_for_download(self):
+        ctx = ssl.create_default_context()
+        for ca in self._CA_BUNDLES:
+            if os.path.exists(ca):
+                try:
+                    ctx.load_verify_locations(cafile=ca)
+                    return ctx
+                except Exception:
+                    continue
+        return ctx
+
+    def _download_subscription(self, url: str, dest_path: str) -> dict:
+        """Download an HTTPS subscription to dest_path. Verifies TLS against the
+        SteamOS CA bundle; on a CA-verification failure only, retries once with
+        verification disabled so odd/self-signed endpoints still work (the
+        downloaded payload is validated by HiddifyCli parse afterwards)."""
+        request = urllib.request.Request(url, headers={"User-Agent": "hiddify-steam-deck/1.3.16"})
+        info = {"tls_verified": True}
+        try:
+            with urllib.request.urlopen(request, timeout=30, context=self._ssl_context_for_download()) as response:
+                data = response.read()
+        except urllib.error.URLError as e:
+            if not isinstance(getattr(e, "reason", None), ssl.SSLError):
+                raise
+            insecure = ssl.create_default_context()
+            insecure.check_hostname = False
+            insecure.verify_mode = ssl.CERT_NONE
+            with urllib.request.urlopen(request, timeout=30, context=insecure) as response:
+                data = response.read()
+            info["tls_verified"] = False
+        if not data:
+            info["error"] = "Subscription response is empty"
+            return info
+        with open(dest_path, "wb") as f:
+            f.write(data)
+        try:
+            os.chown(dest_path, 1000, 1000)
+        except Exception:
+            pass
+        info["bytes"] = len(data)
+        return info
+
+    def _parse_remote_profile(self, profile_id: str, url: str) -> dict:
+        profile_config_path = os.path.join(CONFIGS_DIR, f"{profile_id}.json")
+        temp_profile_path = f"{profile_config_path}.refresh.tmp"
+        temp_subscription_path = f"{profile_config_path}.subscription.tmp"
+        result = {
+            "success": False,
+            "method": "hiddifycli.parse",
+            "profile_id": profile_id,
+            "profile_config_path": profile_config_path,
+            "temp_profile_path": temp_profile_path,
+            "temp_subscription_path": temp_subscription_path,
+            "has_url": bool(url),
+            "downloaded": False,
+        }
+        if not url:
+            result["error"] = "Profile has no subscription URL"
+            return result
+
+        os.makedirs(CONFIGS_DIR, exist_ok=True)
+        for path in (temp_profile_path, temp_subscription_path):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+
+        source_path = url
+        if re.match(r"^https?://", url, re.IGNORECASE):
+            try:
+                download = self._download_subscription(url, temp_subscription_path)
+                if download.get("error"):
+                    result["error"] = download["error"]
+                    return result
+                source_path = temp_subscription_path
+                result["downloaded"] = True
+                result["subscription_bytes"] = download.get("bytes", 0)
+                result["tls_verified"] = download.get("tls_verified", True)
+            except Exception as e:
+                result["error"] = f"Failed to download subscription: {e}"
+                return result
+
+        cmd = [CLI_PATH, "parse", source_path, "-o", temp_profile_path]
+        result["command"] = [CLI_PATH, "parse", "<SUBSCRIPTION>", "-o", temp_profile_path]
+        try:
+            parsed = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=APP_DIR,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired as e:
+            result["error"] = "Subscription update timed out"
+            result["stdout_tail"] = (e.stdout or "").strip()[-800:] if isinstance(e.stdout, str) else ""
+            result["stderr_tail"] = (e.stderr or "").strip()[-800:] if isinstance(e.stderr, str) else ""
+            try:
+                os.remove(temp_subscription_path)
+            except FileNotFoundError:
+                pass
+            return result
+        except Exception as e:
+            result["error"] = str(e)
+            try:
+                os.remove(temp_subscription_path)
+            except FileNotFoundError:
+                pass
+            return result
+
+        result["returncode"] = parsed.returncode
+        result["stdout_tail"] = (parsed.stdout or "").strip()[-800:]
+        result["stderr_tail"] = (parsed.stderr or "").strip()[-800:]
+        if parsed.returncode != 0:
+            result["error"] = f"HiddifyCli parse failed with rc={parsed.returncode}"
+            try:
+                os.remove(temp_subscription_path)
+            except FileNotFoundError:
+                pass
+            return result
+        if not os.path.exists(temp_profile_path):
+            result["error"] = "Parsed profile config missing"
+            try:
+                os.remove(temp_subscription_path)
+            except FileNotFoundError:
+                pass
+            return result
+
+        try:
+            with open(temp_profile_path) as f:
+                parsed_config = json.load(f)
+        except Exception as e:
+            result["error"] = f"Failed to parse refreshed config: {e}"
+            try:
+                os.remove(temp_subscription_path)
+            except FileNotFoundError:
+                pass
+            return result
+
+        summary = self._config_data_summary(parsed_config)
+        result["profile_summary"] = summary
+        if not parsed_config.get("outbounds"):
+            result["error"] = "Refreshed profile has no outbounds"
+            try:
+                os.remove(temp_subscription_path)
+            except FileNotFoundError:
+                pass
+            return result
+
+        try:
+            os.replace(temp_profile_path, profile_config_path)
+            try:
+                os.remove(temp_subscription_path)
+            except FileNotFoundError:
+                pass
+            try:
+                os.chown(profile_config_path, 1000, 1000)
+            except Exception:
+                pass
+        except Exception as e:
+            result["error"] = f"Failed to save refreshed profile: {e}"
+            try:
+                os.remove(temp_subscription_path)
+            except FileNotFoundError:
+                pass
+            return result
+
+        result["success"] = True
+        return result
+
+    def _update_profile_last_update(self, profile_id: str) -> dict:
+        result = {"success": False, "profile_id": profile_id}
+        try:
+            now = datetime.datetime.now().astimezone().isoformat(timespec="microseconds")
+            db = sqlite3.connect(PROFILES_DB)
+            db.execute("UPDATE profile_entries SET last_update = ? WHERE id = ?", (now, profile_id))
+            db.commit()
+            db.close()
+            result.update({"success": True, "last_update": now})
+        except Exception as e:
+            result["error"] = str(e)
+        return result
+
     def _sync_active_profile_config(self) -> dict:
         active = self._get_active_profile()
         result = {
@@ -1339,6 +1718,70 @@ WantedBy=default.target
         )
         return {"success": True, "message": message}
 
+    async def refresh_profile(self, profile_id: str) -> dict:
+        service = self._service_snapshot()
+        grpc_up = self._is_grpc_up()
+        tun_exists = self._tun_exists()
+        self._debug_event(
+            "refresh_profile.entry",
+            profile_id=profile_id,
+            profile_meta=self._profile_meta(profile_id),
+            tun_up=self._is_tun_up(),
+            tun_exists=tun_exists,
+            grpc_up=grpc_up,
+            service=service,
+        )
+        if self._is_tun_up() or tun_exists or grpc_up or self._service_is_active(service):
+            self._debug_event("refresh_profile.blocked_running", profile_id=profile_id)
+            return {"success": False, "message": "Stop VPN before updating servers"}
+
+        meta = self._profile_meta(profile_id)
+        if not meta.get("exists"):
+            return {"success": False, "message": "Profile not found"}
+        if not meta.get("has_url"):
+            return {"success": False, "message": "This profile has no subscription URL"}
+        if not os.path.exists(CLI_PATH):
+            return {"success": False, "message": "HiddifyCli is not installed"}
+
+        url = self._profile_url(profile_id)
+        parse_result = self._parse_remote_profile(profile_id, url)
+        if not parse_result.get("success"):
+            self._debug_event("refresh_profile.parse_failed", profile_id=profile_id, parse=parse_result)
+            return {"success": False, "message": "Failed to update subscription. Open Logs for diagnostics."}
+
+        info = self._profile_server_info(profile_id)
+        selection_reset = self._reset_invalid_server_selection(profile_id, info)
+        rebuild = self._rebuild_config(profile_id)
+        if not rebuild.get("success", False):
+            self._debug_event(
+                "refresh_profile.rebuild_failed",
+                profile_id=profile_id,
+                parse=parse_result,
+                selection_reset=selection_reset,
+                rebuild=rebuild,
+            )
+            return {"success": False, "message": "Updated subscription, but failed to rebuild config. Open Logs."}
+
+        last_update = self._update_profile_last_update(profile_id)
+        refreshed_info = self._profile_server_info(profile_id)
+        self._debug_event(
+            "refresh_profile.done",
+            profile_id=profile_id,
+            profile_meta=self._profile_meta(profile_id),
+            parse=parse_result,
+            selection_reset=selection_reset,
+            rebuild=rebuild,
+            last_update=last_update,
+            server_info=refreshed_info,
+        )
+        count = refreshed_info.get("count", 0)
+        return {
+            "success": True,
+            "message": f"Servers updated: {count}",
+            "server_count": count,
+            "selectable": bool(refreshed_info.get("selectable")),
+        }
+
     async def switch_profile(self, profile_id: str) -> dict:
         service = self._service_snapshot()
         grpc_up = self._is_grpc_up()
@@ -1462,6 +1905,8 @@ WantedBy=default.target
         result = {
             "service_before": self._service_snapshot(),
             "grpc_up_before": self._is_grpc_up(),
+            "grpc_port_before": self._grpc_port_snapshot(),
+            "desktop_before": self._desktop_hiddify_snapshot(),
             "tun_exists_before": self._tun_exists(),
             "tun_up_before": self._is_tun_up(),
         }
@@ -1480,6 +1925,18 @@ WantedBy=default.target
                 service = self._service_snapshot()
                 result["service_after_kill"] = service
 
+        desktop_running = (
+            result["grpc_up_before"]
+            or result["desktop_before"]["pgrep_hiddify"]["rc"] == 0
+            or any(unit.get("active") in ("active", "activating") for unit in result["desktop_before"].get("units", []))
+        )
+        if desktop_running:
+            result["desktop_stop"] = await self._stop_desktop_hiddify_runtime()
+
+        if self._is_grpc_up():
+            result["grpc_port_cleanup"] = self._cleanup_grpc_port()
+            await asyncio.sleep(1)
+
         cleanup = {}
         if self._tun_exists() or self._is_tun_up():
             cleanup = self._cleanup_tun()
@@ -1487,6 +1944,8 @@ WantedBy=default.target
         result["cleanup"] = cleanup
         result["service_after"] = self._service_snapshot()
         result["grpc_up_after"] = self._is_grpc_up()
+        result["grpc_port_after"] = self._grpc_port_snapshot()
+        result["desktop_after"] = self._desktop_hiddify_snapshot()
         result["tun_exists_after"] = self._tun_exists()
         result["tun_up_after"] = self._is_tun_up()
         return result
@@ -1533,16 +1992,17 @@ WantedBy=default.target
             self._apply_caps()
 
         service = self._service_snapshot()
-        if self._service_is_active(service) or self._tun_exists():
+        if self._service_is_active(service) or self._tun_exists() or grpc_up:
             cleanup = await self._reset_stale_runtime()
             self._debug_event("start_vpn.pre_start_cleanup", cleanup=cleanup)
             service = self._service_snapshot()
-            if self._service_is_active(service) or self._tun_exists():
+            if self._service_is_active(service) or self._tun_exists() or self._is_grpc_up():
                 self._debug_event(
                     "start_vpn.pre_start_cleanup_incomplete",
                     service=service,
                     tun_exists=self._tun_exists(),
                     grpc_up=self._is_grpc_up(),
+                    port=self._grpc_port_snapshot(),
                 )
                 return {"success": False, "message": "Previous VPN session is stuck. Open Logs for diagnostics."}
 
@@ -1634,9 +2094,20 @@ WantedBy=default.target
                 decky.logger.info("GUI gRPC detected — stopping via gRPC Core.Stop")
                 self._grpc_stop()
                 await asyncio.sleep(3)
-                if not self._is_tun_up():
+                desktop_stop = {}
+                if self._is_grpc_up():
+                    desktop_stop = await self._stop_desktop_hiddify_runtime()
+                if not self._is_tun_up() and not self._is_grpc_up():
                     decky.logger.info("VPN stopped via gRPC")
-                    self._debug_event("stop_vpn.done", tun_up=False, tun_exists=self._tun_exists(), autostart=autostart, service=self._service_snapshot())
+                    self._debug_event(
+                        "stop_vpn.done",
+                        tun_up=False,
+                        tun_exists=self._tun_exists(),
+                        grpc_up=False,
+                        desktop_stop=desktop_stop,
+                        autostart=autostart,
+                        service=self._service_snapshot(),
+                    )
                     return {"success": True, "message": "VPN stopped"}
                 decky.logger.warning("gRPC Stop sent but tun0 still up — falling back to systemctl")
 
@@ -1644,15 +2115,24 @@ WantedBy=default.target
                 cleanup = {}
                 if self._tun_exists():
                     cleanup = self._cleanup_tun()
+                if self._is_grpc_up():
+                    cleanup["desktop_runtime"] = await self._stop_desktop_hiddify_runtime()
+                if self._is_grpc_up():
+                    cleanup["grpc_port"] = self._cleanup_grpc_port()
+                    await asyncio.sleep(1)
                 service = self._service_snapshot()
+                grpc_up = self._is_grpc_up()
                 if self._service_is_active(service):
-                    self._debug_event("stop_vpn.service_still_active", tun_up=False, tun_exists=self._tun_exists(), cleanup=cleanup, autostart=autostart, service=service)
+                    self._debug_event("stop_vpn.service_still_active", tun_up=False, tun_exists=self._tun_exists(), grpc_up=grpc_up, cleanup=cleanup, autostart=autostart, service=service)
                     return {"success": False, "message": "VPN service is still active. Open Logs for diagnostics."}
+                if grpc_up:
+                    self._debug_event("stop_vpn.grpc_still_active", tun_up=False, tun_exists=self._tun_exists(), grpc_up=True, cleanup=cleanup, autostart=autostart, service=service, port=self._grpc_port_snapshot())
+                    return {"success": False, "message": "VPN core cleanup failed. Open Logs for diagnostics."}
                 if self._tun_exists():
-                    self._debug_event("stop_vpn.stale_tun_remaining", tun_up=False, tun_exists=True, cleanup=cleanup, autostart=autostart, service=service)
+                    self._debug_event("stop_vpn.stale_tun_remaining", tun_up=False, tun_exists=True, grpc_up=grpc_up, cleanup=cleanup, autostart=autostart, service=service)
                     return {"success": False, "message": "VPN interface cleanup failed. Open Logs for diagnostics."}
                 decky.logger.info("VPN stopped via systemctl")
-                self._debug_event("stop_vpn.done", tun_up=False, tun_exists=False, cleanup=cleanup, autostart=autostart, service=service)
+                self._debug_event("stop_vpn.done", tun_up=False, tun_exists=False, grpc_up=False, cleanup=cleanup, autostart=autostart, service=service)
                 return {"success": True, "message": "VPN stopped"}
 
             # Last resort: kill any remaining HiddifyCli processes
