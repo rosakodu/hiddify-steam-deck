@@ -1,41 +1,78 @@
 #!/bin/bash
-# Hiddify VPN — точка входа installer
-# GUI mode: копирует себя в /tmp и форкает wizard (терминал закрывается мгновенно)
-# TTY mode: запускает terminal install.sh
+# Hiddify VPN installer entrypoint.
+# Desktop Mode prefers the GTK wizard; SSH/TTY falls back to terminal install.sh.
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WORK_DIR="/tmp/hiddify-wizard"
+LAUNCH_LOG="/tmp/hiddify-wizard-launch.log"
+DECK_UID="${DECK_UID:-1000}"
+DECK_USER="${DECK_USER:-deck}"
+DECK_HOME="/home/$DECK_USER"
 
-if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
-    # Desktop Mode — копируем в persistent /tmp чтобы makeself мог почистить свой tmpdir,
-    # а wizard продолжил работу со своими файлами
-    WORK_DIR="/tmp/hiddify-wizard"
+detect_gui_session() {
+    if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+        return 0
+    fi
+
+    if [ -S "/run/user/$DECK_UID/wayland-0" ]; then
+        export XDG_RUNTIME_DIR="/run/user/$DECK_UID"
+        export WAYLAND_DISPLAY="wayland-0"
+        return 0
+    fi
+
+    if [ -S "/tmp/.X11-unix/X0" ]; then
+        export DISPLAY=":0"
+        export XDG_RUNTIME_DIR="/run/user/$DECK_UID"
+        return 0
+    fi
+
+    return 1
+}
+
+prepare_wizard_dir() {
     rm -rf "$WORK_DIR"
-    cp -r "$SCRIPT_DIR/." "$WORK_DIR/"
+    mkdir -p "$WORK_DIR"
+    cp -a "$SCRIPT_DIR/." "$WORK_DIR/"
+}
 
-    # Находим XAUTHORITY от живой KDE-сессии (нужен для X11 соединения)
-    if [ -z "$XAUTHORITY" ]; then
-        XAUTH_FOUND="$(ls /run/user/1000/xauth_* 2>/dev/null | head -1)"
-        export XAUTHORITY="${XAUTH_FOUND:-$HOME/.Xauthority}"
+prepare_gui_env() {
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$DECK_UID}"
+    export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+    if [ -z "${XAUTHORITY:-}" ]; then
+        XAUTH_FOUND="$(ls "$XDG_RUNTIME_DIR"/xauth_* 2>/dev/null | head -1 || true)"
+        export XAUTHORITY="${XAUTH_FOUND:-$DECK_HOME/.Xauthority}"
     fi
+}
 
-    # Запускаем wizard в фоне и сразу выходим → терминал закрывается
+launch_wizard() {
+    : > "$LAUNCH_LOG" 2>/dev/null || true
+    prepare_wizard_dir
+    prepare_gui_env
+
     if [ "$EUID" -eq 0 ]; then
-        # Запустили с sudo — wizard должен работать как deck
-        XAUTH="$XAUTHORITY"
-        sudo -u deck -E DISPLAY="$DISPLAY" XAUTHORITY="$XAUTH" \
-            python3 "$WORK_DIR/wizard.py" "$WORK_DIR" >/dev/null 2>&1 &
+        sudo -u "$DECK_USER" -E \
+            HOME="$DECK_HOME" USER="$DECK_USER" \
+            DISPLAY="${DISPLAY:-}" WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
+            XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+            XAUTHORITY="$XAUTHORITY" \
+            python3 "$WORK_DIR/wizard.py" "$WORK_DIR" >>"$LAUNCH_LOG" 2>&1 &
     else
-        DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" \
-            python3 "$WORK_DIR/wizard.py" "$WORK_DIR" >/dev/null 2>&1 &
+        HOME="${HOME:-$DECK_HOME}" USER="${USER:-$DECK_USER}" \
+            DISPLAY="${DISPLAY:-}" WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
+            XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+            XAUTHORITY="$XAUTHORITY" \
+            python3 "$WORK_DIR/wizard.py" "$WORK_DIR" >>"$LAUNCH_LOG" 2>&1 &
     fi
+}
 
-    # Терминал закрывается немедленно
+if detect_gui_session; then
+    launch_wizard
     exit 0
+fi
+
+if [ "$EUID" -ne 0 ]; then
+    exec sudo bash "$SCRIPT_DIR/install.sh"
 else
-    # SSH / TTY — terminal installation
-    if [ "$EUID" -ne 0 ]; then
-        exec sudo bash "$SCRIPT_DIR/install.sh"
-    else
-        exec bash "$SCRIPT_DIR/install.sh"
-    fi
+    exec bash "$SCRIPT_DIR/install.sh"
 fi
