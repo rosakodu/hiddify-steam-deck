@@ -42,7 +42,7 @@ Latest stable build: **v1.3.16**
 - Installer: `Hiddify-linux-x64-v1.3.16.bin`
 - Decky plugin: `decky-hiddify-v1.3.16.zip`
 
-This release adds server subscription updates from Game Mode and keeps the SteamOS authorization fixes for DNS/domain/default-route changes after reinstall or reboot.
+This release adds **server subscription updates from Game Mode** (the ↻ button requested in [#8](https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/issues/8) — thanks @SRMUFA01). It also fixes HTTPS subscription downloads that failed TLS verification under Decky's bundled Python, and restores the controller focus highlight on the Game Mode profile controls. All prior SteamOS authorization fixes for DNS/domain/default-route changes after reinstall or reboot are preserved.
 
 ## Demo
 
@@ -229,6 +229,8 @@ journalctl --user -u hiddify -f
 | Multi-server VLESS fails in Game Mode with `unknown load balance strategy:` | Decky service starts HiddifyCli with `-d decky-hiddify-settings.json` and `balancer-strategy: round-robin` |
 | Multi-server VLESS needs server selection in Game Mode | Plugin shows a server selector only for multi-server profiles and can build runtime config for one manually selected server |
 | Remote subscription server list is stale | Use **Update servers** in the Decky plugin while VPN is stopped; the plugin refreshes the active subscription and rebuilds Game Mode config |
+| HTTPS subscription download fails with `CERTIFICATE_VERIFY_FAILED` | Decky's bundled Python doesn't resolve the SteamOS CA store; the plugin loads the system CA bundle (`/etc/ssl/certs/ca-certificates.crt`) explicitly, with an unverified retry only on a TLS-verify error |
+| Custom Game Mode controls not selectable by D-pad/stick | Refresh button and profile pill use a `Focusable` wrapper with `onGamepadFocus`/`onGamepadBlur` to render a visible focus highlight |
 
 ### Why Installation Survives SteamOS Updates
 
@@ -266,6 +268,7 @@ The `decky-hiddify` plugin adds VPN control to Quick Access Menu (the `···` b
 - **Manual server mode** — choose a concrete VLESS/VMess/Trojan/Shadowsocks outbound from Game Mode
 - **Hiddify default mode** — lets Hiddify Core use its generated selector/balancer with `balancer-strategy: round-robin`
 - **Per-profile server memory** — selected server is stored outside the Hiddify database, so Desktop Mode profile data is not rewritten
+- **Controller-first focus highlight** — the refresh button and profile pill show a clear focus ring (border + glow + scale) when navigated with the D-pad/stick, alongside full touchscreen support
 - Connection status with TUN IP address display
 - Syncs with Hiddify GUI (stopping VPN from plugin also stops GUI-managed VPN via systemd unit)
 - Background monitor with push events on VPN state changes (polls every 5 s)
