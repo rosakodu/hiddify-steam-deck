@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Component, ReactNode } from "react";
+import React, { useState, useEffect, useRef, Component, ReactNode } from "react";
 import {
   PanelSection,
   PanelSectionRow,
@@ -117,6 +117,16 @@ function VpnPanel() {
   const [showLogs, setShowLogs]   = useState(false);
   const [logs, setLogs]           = useState("");
 
+  // Decky Focusable fires both onActivate and onClick on a single gamepad press,
+  // so guard each control against a duplicate trigger in the same interaction.
+  const lastTrigger = useRef<{ key: string; t: number }>({ key: "", t: 0 });
+  const dedupe = (key: string) => {
+    const now = Date.now();
+    if (lastTrigger.current.key === key && now - lastTrigger.current.t < 500) return false;
+    lastTrigger.current = { key, t: now };
+    return true;
+  };
+
   const fetchStatus = async () => {
     try { setStatus(await getStatus()); } catch {}
   };
@@ -190,6 +200,7 @@ function VpnPanel() {
   };
 
   const handleSwitch = async (id: string) => {
+    if (!dedupe(`switch:${id}`)) return;
     setSwitching(true);
     try {
       const r = await switchProfile(id);
@@ -212,6 +223,7 @@ function VpnPanel() {
   const handleServerSwitch = async (mode: string, tag: string = "") => {
     const active = profiles.find(p => p.active);
     if (!active || loading || status.running || status.connected) return;
+    if (!dedupe(`server:${mode}:${tag}`)) return;
     setServerSwitching(true);
     try {
       const r = await switchServer(active.id, mode, tag);
@@ -230,7 +242,16 @@ function VpnPanel() {
   };
 
   const handleRefreshProfile = async (profileId: string) => {
-    if (!profileId || loading || status.running || status.connected || refreshingProfileId) return;
+    if (!profileId || !dedupe(`refresh:${profileId}`)) return;
+    if (refreshingProfileId) return;
+    if (loading || status.running || status.connected) {
+      toaster.toast({
+        title: "Hiddify VPN",
+        body: "Turn the VPN off first, then update the server list",
+        duration: 4000,
+      });
+      return;
+    }
     setRefreshingProfileId(profileId);
     try {
       const r = await refreshProfile(profileId);
@@ -348,7 +369,9 @@ function VpnPanel() {
                         lineHeight: 1,
                         boxShadow: "0 0 10px rgba(74, 222, 128, 0.35)",
                         opacity: isBusy || (refreshingProfileId && refreshingProfileId !== p.id) ? 0.45 : 1,
-                        pointerEvents: isBusy || Boolean(refreshingProfileId) ? "none" : "auto",
+                        // Stay pressable while the VPN is on so we can warn the user;
+                        // only fully block during an in-flight refresh.
+                        pointerEvents: refreshingProfileId ? "none" : "auto",
                         transition: "transform 0.1s ease, box-shadow 0.1s ease",
                       }}
                       focusStyle={{
@@ -431,41 +454,84 @@ function VpnPanel() {
                 {isBusy ? "Stop VPN before changing server" : "Server"}
               </div>
 
-              <ButtonItem
-                onClick={() => !isBusy && !serverSwitching && serverInfo.selected.mode !== "auto" && handleServerSwitch("auto")}
-                disabled={isBusy || serverSwitching || serverInfo.selected.mode === "auto"}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{
-                    width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                    background: serverInfo.selected.mode === "auto" ? "#4ade80" : "rgba(255,255,255,0.25)",
-                  }} />
-                  <span style={{ flex: 1 }}>Hiddify default</span>
-                  <span style={{ fontSize: 10, opacity: 0.55 }}>auto</span>
-                </div>
-              </ButtonItem>
-
-              {serverInfo.servers.map(server => {
-                const active = serverInfo.selected.mode === "manual" && serverInfo.selected.tag === server.tag;
-                return (
-                  <ButtonItem
-                    key={server.tag}
-                    onClick={() => !isBusy && !serverSwitching && !active && handleServerSwitch("manual", server.tag)}
-                    disabled={isBusy || serverSwitching || active}
+              {[
+                {
+                  key: "__auto__",
+                  name: "Hiddify default",
+                  badge: "auto",
+                  active: serverInfo.selected.mode === "auto",
+                  pick: () => handleServerSwitch("auto"),
+                },
+                ...serverInfo.servers.map(server => ({
+                  key: server.tag,
+                  name: server.name,
+                  badge: (server.type || "").toUpperCase(),
+                  active: serverInfo.selected.mode === "manual" && serverInfo.selected.tag === server.tag,
+                  pick: () => handleServerSwitch("manual", server.tag),
+                })),
+              ].map(item => (
+                <div key={item.key} style={{ display: "flex", marginBottom: 8 }}>
+                  <FocusButton
+                    role="button"
+                    aria-label={`Select server ${item.name}`}
+                    aria-disabled={isBusy || serverSwitching || item.active}
+                    onActivate={(ev: any) => {
+                      ev?.stopPropagation?.();
+                      if (!isBusy && !serverSwitching && !item.active) item.pick();
+                    }}
+                    onClick={(ev: any) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      if (!isBusy && !serverSwitching && !item.active) item.pick();
+                    }}
+                    baseStyle={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "auto",
+                      maxWidth: "100%",
+                      minHeight: 34,
+                      border: item.active ? "1px solid rgba(74, 222, 128, 0.4)" : "1px solid rgba(255,255,255,0.12)",
+                      borderRadius: 999,
+                      background: item.active ? "rgba(255,255,255,0.94)" : "rgba(255,255,255,0.14)",
+                      color: item.active ? "#111827" : "rgba(255,255,255,0.92)",
+                      padding: "6px 14px",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      lineHeight: 1.1,
+                      opacity: isBusy || serverSwitching ? 0.55 : 1,
+                      transition: "transform 0.1s ease, box-shadow 0.1s ease, background 0.1s ease",
+                    }}
+                    focusStyle={{
+                      background: item.active ? "#ffffff" : "rgba(255,255,255,0.32)",
+                      color: item.active ? "#111827" : "#ffffff",
+                      transform: "scale(1.04)",
+                      border: "1px solid #ffffff",
+                      boxShadow: "0 0 0 3px rgba(255,255,255,0.85), 0 0 16px rgba(255,255,255,0.45)",
+                    }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{
-                        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                        background: active ? "#4ade80" : "rgba(255,255,255,0.25)",
-                      }} />
-                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {server.name}
-                      </span>
-                      <span style={{ fontSize: 10, opacity: 0.55, textTransform: "uppercase" }}>{server.type}</span>
-                    </div>
-                  </ButtonItem>
-                );
-              })}
+                    <span style={{
+                      width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                      background: item.active ? "#22c55e" : "rgba(255,255,255,0.38)",
+                    }} />
+                    <span style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {item.name}
+                    </span>
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: item.active ? "rgba(17, 24, 39, 0.55)" : "rgba(255,255,255,0.5)",
+                    }}>
+                      {item.badge}
+                    </span>
+                  </FocusButton>
+                </div>
+              ))}
             </div>
           </PanelSectionRow>
         )}
