@@ -36,13 +36,13 @@ More details: [Steam Deck VPN for Game Mode and Desktop Mode](docs/steam-deck-vp
 
 ## Latest Release
 
-Latest stable build: **v1.3.16**
+Latest stable build: **v1.3.17**
 
-- Release: https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/tag/v1.3.16
-- Installer: `Hiddify-linux-x64-v1.3.16.bin`
-- Decky plugin: `decky-hiddify-v1.3.16.zip`
+- Release: https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/tag/v1.3.17
+- Installer: `Hiddify-linux-x64-v1.3.17.bin`
+- Decky plugin: `decky-hiddify-v1.3.17.zip`
 
-This release adds **server subscription updates from Game Mode** (the ↻ button requested in [#8](https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/issues/8) — thanks @SRMUFA01). It also fixes HTTPS subscription downloads that failed TLS verification under Decky's bundled Python, and restores the controller focus highlight on the Game Mode profile controls. All prior SteamOS authorization fixes for DNS/domain/default-route changes after reinstall or reboot are preserved.
+This release reworks the Game Mode **server selector** into the same compact pills as the profile row (resolving the off-style layout @SRMUFA01 flagged in [#8](https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/issues/8)), warns you to stop the VPN before pressing ↻, and fixes duplicated toasts from gamepad double-activation. It builds on v1.3.16's Game Mode subscription updates and HTTPS subscription fix, and preserves all SteamOS authorization fixes for DNS/domain/default-route changes after reinstall or reboot.
 
 ## Demo
 
@@ -70,8 +70,8 @@ This demo shows the Decky plugin in Game Mode with both single-server and multi-
 
 | File | Description |
 |------|-------------|
-| `Hiddify-linux-x64-v1.3.16.bin` | Self-extracting installer (~51 MB). Installs the desktop client and bundled Decky plugin |
-| `decky-hiddify-v1.3.16.zip` | Standalone Decky plugin archive for manual install or debugging |
+| `Hiddify-linux-x64-v1.3.17.bin` | Self-extracting installer (~51 MB). Installs the desktop client and bundled Decky plugin |
+| `decky-hiddify-v1.3.17.zip` | Standalone Decky plugin archive for manual install or debugging |
 | `installer-src/` | Installer source (install.sh + all bundled files) |
 
 ---
@@ -92,9 +92,9 @@ Open **Konsole** and run:
 
 ```bash
 cd ~/Downloads
-curl -L -o Hiddify-linux-x64-v1.3.16.bin \
-  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.16/Hiddify-linux-x64-v1.3.16.bin
-chmod +x Hiddify-linux-x64-v1.3.16.bin
+curl -L -o Hiddify-linux-x64-v1.3.17.bin \
+  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.17/Hiddify-linux-x64-v1.3.17.bin
+chmod +x Hiddify-linux-x64-v1.3.17.bin
 ```
 
 ### 2. Run the installer
@@ -102,7 +102,7 @@ chmod +x Hiddify-linux-x64-v1.3.16.bin
 From the same Konsole window:
 
 ```bash
-bash ~/Downloads/Hiddify-linux-x64-v1.3.16.bin
+bash ~/Downloads/Hiddify-linux-x64-v1.3.17.bin
 ```
 
 The installer automatically:
@@ -141,10 +141,10 @@ The `.bin` installer already installs the bundled Decky plugin. Manual plugin in
 
 ```bash
 cd ~/Downloads
-curl -L -o decky-hiddify-v1.3.16.zip \
-  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.16/decky-hiddify-v1.3.16.zip
+curl -L -o decky-hiddify-v1.3.17.zip \
+  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.17/decky-hiddify-v1.3.17.zip
 sudo rm -rf /home/deck/homebrew/plugins/decky-hiddify
-sudo unzip -o decky-hiddify-v1.3.16.zip -d /home/deck/homebrew/plugins/
+sudo unzip -o decky-hiddify-v1.3.17.zip -d /home/deck/homebrew/plugins/
 sudo systemctl restart plugin_loader
 ```
 
@@ -254,7 +254,7 @@ cd ~/.local/share/app.hiddify.com
 
 ---
 
-## Decky Plugin (v1.3.16)
+## Decky Plugin (v1.3.17)
 
 The `decky-hiddify` plugin adds VPN control to Quick Access Menu (the `···` button).
 
@@ -317,7 +317,7 @@ Three large upstream binaries are **not** included in this repo. Download them f
 Then rebuild the self-extracting installer:
 
 ```bash
-makeself --nox11 release/installer-src/ Hiddify-linux-x64-v1.3.16.bin "Hiddify VPN v1.3.16" bash setup.sh
+makeself --nox11 release/installer-src/ Hiddify-linux-x64-v1.3.17.bin "Hiddify VPN v1.3.17" bash setup.sh
 ```
 
 ### Decky Plugin

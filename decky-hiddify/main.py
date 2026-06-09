@@ -1420,7 +1420,7 @@ WantedBy=default.target
         SteamOS CA bundle; on a CA-verification failure only, retries once with
         verification disabled so odd/self-signed endpoints still work (the
         downloaded payload is validated by HiddifyCli parse afterwards)."""
-        request = urllib.request.Request(url, headers={"User-Agent": "hiddify-steam-deck/1.3.16"})
+        request = urllib.request.Request(url, headers={"User-Agent": "hiddify-steam-deck/1.3.17"})
         info = {"tls_verified": True}
         try:
             with urllib.request.urlopen(request, timeout=30, context=self._ssl_context_for_download()) as response:
