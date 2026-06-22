@@ -90,25 +90,28 @@ Hiddify для Steam Deck предоставляет пользователям 
 
 ### 1. Скачайте установщик в режиме рабочего стола
 
-Откройте **Konsole** и выполните:
+Выберите любой удобный способ скачивания файла `Hiddify-linux-x64-v1.3.17.bin` в папку `Downloads`:
 
-```bash
-cd ~/Downloads
-curl -L -o Hiddify-linux-x64-v1.3.17.bin \
-  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.17/Hiddify-linux-x64-v1.3.17.bin
-chmod +x Hiddify-linux-x64-v1.3.17.bin
-```
-
-> [!IMPORTANT]
-> **Если загрузка заблокирована или работает слишком медленно (например, в РФ):**
-> Используйте зеркало GitHub Proxy для скачивания установщика:
-> ```bash
-> cd ~/Downloads
-> curl -L -o Hiddify-linux-x64-v1.3.17.bin \
->   https://gh-proxy.com/https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.17/Hiddify-linux-x64-v1.3.17.bin
-> chmod +x Hiddify-linux-x64-v1.3.17.bin
-> ```
-> Также вы можете скачать файл `Hiddify-linux-x64-v1.3.17.bin` на любое другое устройство (например, смартфон с работающим VPN) и перенести его в папку `Downloads` на Steam Deck с помощью **KDE Connect** или обычной флешки.
+*   **Способ А: Через браузер (Рекомендуется при блокировках консоли):**
+    Откройте браузер на Steam Deck, перейдите на [страницу релизов GitHub](https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/tag/v1.3.17) и скачайте установщик вручную в папку `Downloads`.
+*   **Способ Б: Через консоль (Быстрый):**
+    Откройте **Konsole** и выполните:
+    ```bash
+    cd ~/Downloads
+    curl -L -o Hiddify-linux-x64-v1.3.17.bin \
+      https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.17/Hiddify-linux-x64-v1.3.17.bin
+    chmod +x Hiddify-linux-x64-v1.3.17.bin
+    ```
+*   **Способ В: Через зеркало (Если не работает Способ Б):**
+    В **Konsole** выполните загрузку через работающее зеркало:
+    ```bash
+    cd ~/Downloads
+    curl -L -o Hiddify-linux-x64-v1.3.17.bin \
+      https://gh-proxy.com/https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.17/Hiddify-linux-x64-v1.3.17.bin
+    chmod +x Hiddify-linux-x64-v1.3.17.bin
+    ```
+*   **Способ Г: Через другое устройство:**
+    Скачайте установщик на другое устройство (например, смартфон с работающим VPN) и перенесите в папку `Downloads` на Steam Deck с помощью **KDE Connect** или обычной флешки.
 
 ### 2. Запустите установщик
 
