@@ -4,6 +4,8 @@
 
 <img src="https://raw.githubusercontent.com/denmrnngp-cloud/hiddify-steam-deck-vpn/main/assets/stats-ticker.svg" alt="Live project stats: weekly downloads, repository visits, clones, stars, and star request" width="100%"/>
 
+**English** | [Русский](README.ru.md)
+
 > **Unofficial Steam Deck / SteamOS port of [hiddify/hiddify-app](https://github.com/hiddify/hiddify-app)**
 > Desktop Mode Hiddify client installer + Decky Loader Game Mode VPN plugin.
 > Powered by [sing-box](https://github.com/SagerNet/sing-box) · Supports VLESS/Reality, VMess, Trojan, Hysteria 2, TUIC, Shadowsocks
