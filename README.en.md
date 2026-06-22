@@ -145,8 +145,8 @@ Launch the GUI from the menu or directly:
 
 Add a VPN configuration (subscription link or manual).
 
-> [!TIP]
-> When adding or configuring a profile, you can click on the settings icon (gear) next to it and select **VPN with WARP extra security** to improve connection stability and privacy.
+> [!IMPORTANT]
+> When adding or configuring a profile, you must click on the settings icon (gear) next to it and select **VPN with WARP extra security** to improve connection stability and privacy.
 
 Config is saved to:
 ```
