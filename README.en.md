@@ -99,6 +99,17 @@ curl -L -o Hiddify-linux-x64-v1.3.17.bin \
 chmod +x Hiddify-linux-x64-v1.3.17.bin
 ```
 
+> [!IMPORTANT]
+> **If the download is blocked or too slow (e.g. in Russia/Iran):**
+> Use a GitHub Proxy mirror to download the installer:
+> ```bash
+> cd ~/Downloads
+> curl -L -o Hiddify-linux-x64-v1.3.17.bin \
+>   https://gh-proxy.com/https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.17/Hiddify-linux-x64-v1.3.17.bin
+> chmod +x Hiddify-linux-x64-v1.3.17.bin
+> ```
+> Alternatively, download `Hiddify-linux-x64-v1.3.17.bin` on another device (like a smartphone with a working VPN) and transfer it to the `Downloads` folder on Steam Deck using **KDE Connect** or a USB drive.
+
 ### 2. Run the installer
 
 From the same Konsole window:
@@ -149,6 +160,13 @@ sudo rm -rf /home/deck/homebrew/plugins/decky-hiddify
 sudo unzip -o decky-hiddify-v1.3.17.zip -d /home/deck/homebrew/plugins/
 sudo systemctl restart plugin_loader
 ```
+
+> [!TIP]
+> **Alternative download for the standalone plugin archive via mirror:**
+> ```bash
+> curl -L -o decky-hiddify-v1.3.17.zip \
+>   https://gh-proxy.com/https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.17/decky-hiddify-v1.3.17.zip
+> ```
 
 ---
 
