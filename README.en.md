@@ -1,0 +1,340 @@
+# VPN for Steam Deck / SteamOS — Hiddify Decky Game Mode Plugin
+
+<img src="https://raw.githubusercontent.com/denmrnngp-cloud/hiddify-steam-deck-vpn/main/assets/cover.png" alt="Hiddify VPN for Steam Deck and SteamOS with Decky Loader Game Mode plugin" width="100%"/>
+
+<img src="https://raw.githubusercontent.com/denmrnngp-cloud/hiddify-steam-deck-vpn/main/assets/stats-ticker.svg" alt="Live project stats: weekly downloads, repository visits, clones, stars, and star request" width="100%"/>
+
+**English** | [Русский](README.md)
+
+> **Unofficial Steam Deck / SteamOS port of [hiddify/hiddify-app](https://github.com/hiddify/hiddify-app)**
+> Desktop Mode Hiddify client installer + Decky Loader Game Mode VPN plugin.
+> Powered by [sing-box](https://github.com/SagerNet/sing-box) · Supports VLESS/Reality, VMess, Trojan, Hysteria 2, TUIC, Shadowsocks
+
+[![Based on](https://img.shields.io/badge/based%20on-hiddify%2Fhiddify--app-blue?logo=github)](https://github.com/hiddify/hiddify-app)
+[![Platform](https://img.shields.io/badge/platform-Steam%20Deck%20%2F%20SteamOS-informational?logo=steam)](https://store.steampowered.com/steamdeck)
+[![Decky Plugin](https://img.shields.io/badge/Decky-plugin-green?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyTDQgNXY2YzAgNS4yNSAzLjQgMTAuMTUgOCAxMS4zOEM' )](https://decky.xyz)
+
+Hiddify for Steam Deck gives Steam Deck users a clean way to install and control Hiddify VPN in both Desktop Mode and Game Mode. It bundles a self-extracting Linux installer, the Desktop Mode Hiddify client, and a Decky Loader plugin for Game Mode VPN control.
+
+The Decky plugin supports VPN on/off, VPN profile switching, subscription server updates, and server selection directly in Game Mode when the active Hiddify profile contains multiple selectable servers.
+
+## Steam Deck VPN For Restricted Internet Access
+
+This project is built for Steam Deck users who need a VPN on SteamOS when internet access is blocked, filtered, or unreliable in their country, ISP, hotel, campus, or public Wi-Fi network.
+
+Use Hiddify Steam Deck VPN when you want:
+
+- A Steam Deck VPN that works in both Desktop Mode and Game Mode
+- A Decky VPN plugin that can connect and disconnect without leaving Game Mode
+- VPN profile switching directly from the Steam Deck quick access menu
+- Subscription server updates directly from the Decky plugin
+- Server selection in the Decky plugin when a Hiddify profile provides multiple servers
+- sing-box based VLESS, Reality, VMess, Trojan, Shadowsocks, Hysteria2, and TUIC support on SteamOS
+- Internet access on Steam Deck through your existing Hiddify subscription or proxy profile
+
+Common search terms: **Steam Deck VPN**, **VPN Steam Deck**, **SteamOS VPN**, **Decky VPN plugin**, **Game Mode VPN**, **Hiddify Steam Deck**, **Hiddify SteamOS**, **Hiddify Decky plugin**, **sing-box Steam Deck**.
+
+More details: [Steam Deck VPN for Game Mode and Desktop Mode](docs/steam-deck-vpn.md)
+
+## Latest Release
+
+Latest stable build: **v1.3.17**
+
+- Release: https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/tag/v1.3.17
+- Installer: `Hiddify-linux-x64-v1.3.17.bin`
+- Decky plugin: `decky-hiddify-v1.3.17.zip`
+
+This release reworks the Game Mode **server selector** into the same compact pills as the profile row (resolving the off-style layout @SRMUFA01 flagged in [#8](https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/issues/8)), warns you to stop the VPN before pressing ↻, and fixes duplicated toasts from gamepad double-activation. It builds on v1.3.16's Game Mode subscription updates and HTTPS subscription fix, and preserves all SteamOS authorization fixes for DNS/domain/default-route changes after reinstall or reboot.
+
+## Demo
+
+### Installer and basic VPN toggle
+
+<a href="https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.2.0/demo.mp4">
+  <img src="https://raw.githubusercontent.com/denmrnngp-cloud/hiddify-steam-deck-vpn/main/assets/demo.gif" alt="Demo — Hiddify VPN installer and VPN toggle in Desktop and Game Mode" width="100%"/>
+</a>
+
+▶ [Download / watch full demo (mp4)](https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.2.0/demo.mp4)
+
+### Game Mode profiles and server selection
+
+<a href="https://raw.githubusercontent.com/denmrnngp-cloud/hiddify-steam-deck-vpn/main/assets/game-mode-profiles-demo.mp4">
+  <img src="https://raw.githubusercontent.com/denmrnngp-cloud/hiddify-steam-deck-vpn/main/assets/game-mode-profiles-demo.gif" alt="Demo — Hiddify VPN Decky plugin profile and server selection in Game Mode" width="100%"/>
+</a>
+
+This demo shows the Decky plugin in Game Mode with both single-server and multi-server profiles. The server selector appears only for profiles where server choice is available.
+
+▶ [Download / watch Game Mode profile and server selection demo (mp4)](https://raw.githubusercontent.com/denmrnngp-cloud/hiddify-steam-deck-vpn/main/assets/game-mode-profiles-demo.mp4)
+
+---
+
+## Release Contents
+
+| File | Description |
+|------|-------------|
+| `Hiddify-linux-x64-v1.3.17.bin` | Self-extracting installer (~51 MB). Installs the desktop client and bundled Decky plugin |
+| `decky-hiddify-v1.3.17.zip` | Standalone Decky plugin archive for manual install or debugging |
+| `installer-src/` | Installer source (install.sh + all bundled files) |
+
+---
+
+## Requirements
+
+- Steam Deck (SteamOS) or Ubuntu 22.04+ / Debian 12+
+- Architecture: x86-64 (amd64)
+- For Game Mode: [Decky Loader](https://decky.xyz/) installed
+
+---
+
+## Installation
+
+### 1. Download the installer in Desktop Mode
+
+Open **Konsole** and run:
+
+```bash
+cd ~/Downloads
+curl -L -o Hiddify-linux-x64-v1.3.17.bin \
+  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.17/Hiddify-linux-x64-v1.3.17.bin
+chmod +x Hiddify-linux-x64-v1.3.17.bin
+```
+
+### 2. Run the installer
+
+From the same Konsole window:
+
+```bash
+bash ~/Downloads/Hiddify-linux-x64-v1.3.17.bin
+```
+
+The installer automatically:
+- Detects Steam Deck and applies the correct mode
+- Shows a reinstall/uninstall menu when Hiddify is already installed
+- Installs all files to `/opt/hiddify/`
+- Applies `patchelf` (absolute RPATH — works from any directory)
+- Applies `setcap cap_net_admin` (TUN creation without root at runtime)
+- Configures passwordless sudo for HiddifyCli
+- Configures polkit rules (no password prompts for DNS/route changes)
+- Creates a systemd user service
+- Writes Decky runtime settings for Hiddify Core (`decky-hiddify-settings.json`)
+- Installs or updates the bundled Decky plugin
+- Adds a desktop shortcut (Internet category)
+- Sets the application icon
+
+### 3. Configure a VPN profile
+
+Launch the GUI from the menu or directly:
+
+```bash
+/opt/hiddify/hiddify-gui
+```
+
+Add a VPN configuration (subscription link or manual).
+Config is saved to:
+```
+~/.local/share/app.hiddify.com/data/current-config.json
+```
+
+### 4. Use the Decky plugin in Game Mode
+
+Return to Game Mode, press the `···` button, open **Decky Loader**, then open **Hiddify VPN**.
+
+The `.bin` installer already installs the bundled Decky plugin. Manual plugin installation is only needed for debugging:
+
+```bash
+cd ~/Downloads
+curl -L -o decky-hiddify-v1.3.17.zip \
+  https://github.com/denmrnngp-cloud/hiddify-steam-deck-vpn/releases/download/v1.3.17/decky-hiddify-v1.3.17.zip
+sudo rm -rf /home/deck/homebrew/plugins/decky-hiddify
+sudo unzip -o decky-hiddify-v1.3.17.zip -d /home/deck/homebrew/plugins/
+sudo systemctl restart plugin_loader
+```
+
+---
+
+## Uninstall
+
+Run the installer again — a menu will appear:
+
+```
+Hiddify is already installed in /opt/hiddify
+
+  [1] Reinstall (update)
+  [2] Uninstall completely
+  [3] Cancel
+```
+
+Select `2` to uninstall. Removes:
+- `/opt/hiddify/`
+- systemd user service
+- desktop shortcut and icon from `~/.local/share/`
+
+---
+
+## VPN Control from Terminal
+
+```bash
+# Start VPN
+systemctl --user start hiddify
+
+# Stop VPN
+systemctl --user stop hiddify
+
+# Status
+systemctl --user status hiddify
+
+# Live logs
+journalctl --user -u hiddify -f
+```
+
+---
+
+## Technical Details
+
+### `/opt/hiddify/` Structure
+
+```
+/opt/hiddify/
+├── hiddify              # Flutter GUI (setcap + absolute RUNPATH)
+├── HiddifyCli           # VPN core (setcap + absolute RUNPATH)
+├── hiddify-gui          # Wrapper script for desktop shortcut
+├── hiddify.png          # Application icon
+├── _tools/
+│   └── patchelf         # Static patchelf (bundled)
+├── lib/
+│   ├── hiddify-core.so          # sing-box core
+│   ├── libflutter_linux_gtk.so  # Flutter runtime
+│   ├── libayatana-appindicator3.so.1  # System tray (bundled)
+│   ├── libayatana-ido3-0.4.so.0       # System tray dep (bundled)
+│   ├── libayatana-indicator3.so.7     # System tray dep (bundled)
+│   └── ... (other Flutter plugin .so files)
+└── data/
+    └── flutter_assets/   # Flutter assets, flag icons, fonts
+```
+
+### Key Port Fixes
+
+| Problem | Solution |
+|---------|----------|
+| `./lib/hiddify-core.so not found` from foreign CWD | `patchelf --replace-needed` + `--set-rpath /opt/hiddify/lib` |
+| `libayatana-appindicator3.so.1 not found` on SteamOS | Bundled from Ubuntu 22.04, patchelf on `libtray_manager_plugin.so` |
+| `operation not permitted` creating TUN | `setcap cap_net_admin,cap_net_bind_service,cap_net_raw=+eip` on both binaries |
+| `cache.db: permission denied` | CWD = `~/.local/share/app.hiddify.com` (user-writable) |
+| Caps reset after patchelf | setcap applied strictly **after** patchelf |
+| systemd user service on SteamOS | User service in `~/.config/systemd/user/` (survives OS updates) |
+| `LD_LIBRARY_PATH` ignored with setcap | Absolute RUNPATH via patchelf instead of `LD_LIBRARY_PATH` |
+| Sudo password prompt on every VPN toggle | `/etc/sudoers.d/zz-hiddify` grants passwordless access only for HiddifyCli and cleanup helpers used by the Decky plugin |
+| SteamOS A/B update resets `/etc/` and `/usr/` | Plugin tries to re-apply on load; installer handles it during reinstall |
+| `pkill` killing plugin itself | Bracket trick: `pkill -f '/opt/hiddify/hiddif[y]'` — won't match plugin path |
+| `systemctl --user` failing in plugin subprocess | Set `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus` + `XDG_RUNTIME_DIR=/run/user/1000` |
+| Hiddify GUI VPN not stopped by plugin | Stop `app-hiddify@<uuid>.service` by querying `systemctl list-units` for exact unit name |
+| Multi-server VLESS fails in Game Mode with `unknown load balance strategy:` | Decky service starts HiddifyCli with `-d decky-hiddify-settings.json` and `balancer-strategy: round-robin` |
+| Multi-server VLESS needs server selection in Game Mode | Plugin shows a server selector only for multi-server profiles and can build runtime config for one manually selected server |
+| Remote subscription server list is stale | Use **Update servers** in the Decky plugin while VPN is stopped; the plugin refreshes the active subscription and rebuilds Game Mode config |
+| HTTPS subscription download fails with `CERTIFICATE_VERIFY_FAILED` | Decky's bundled Python doesn't resolve the SteamOS CA store; the plugin loads the system CA bundle (`/etc/ssl/certs/ca-certificates.crt`) explicitly, with an unverified retry only on a TLS-verify error |
+| Custom Game Mode controls not selectable by D-pad/stick | Refresh button and profile pill use a `Focusable` wrapper with `onGamepadFocus`/`onGamepadBlur` to render a visible focus highlight |
+
+### Why Installation Survives SteamOS Updates
+
+SteamOS updates via A/B partition swap — only the read-only partition (`/usr`, `/etc`) changes.
+The installer writes exclusively to:
+- `/opt/hiddify/` — mounted from the `/home` partition (persistent)
+- `~/.config/systemd/user/` — home directory (persistent)
+- `~/.local/share/` — home directory (persistent)
+
+`setcap` is stored as an xattr on the file in `/opt/hiddify/` — also persistent.
+
+### Manual VPN Start
+
+```bash
+cd ~/.local/share/app.hiddify.com
+/opt/hiddify/HiddifyCli run \
+  -c ~/.local/share/app.hiddify.com/data/current-config.json \
+  --tun \
+  -d ~/.local/share/app.hiddify.com/data/decky-hiddify-settings.json
+```
+
+---
+
+## Decky Plugin (v1.3.17)
+
+The `decky-hiddify` plugin adds VPN control to Quick Access Menu (the `···` button).
+
+### Features
+
+- **VPN ON / OFF toggle** — button with colored status dot (green = connected, yellow = connecting, red = off)
+- **Profile selector** — switch between VPN profiles without leaving Game Mode (VPN must be stopped first)
+- **Server selector for multi-server profiles** — shown only when the selected VPN profile has multiple real selectable servers
+- **Update servers** — for remote subscription profiles, refreshes the server list directly from Game Mode while VPN is stopped
+- **Hidden server selector for single-server profiles** — Shadowsocks or single-server VLESS profiles keep the compact UI
+- **Manual server mode** — choose a concrete VLESS/VMess/Trojan/Shadowsocks outbound from Game Mode
+- **Hiddify default mode** — lets Hiddify Core use its generated selector/balancer with `balancer-strategy: round-robin`
+- **Per-profile server memory** — selected server is stored outside the Hiddify database, so Desktop Mode profile data is not rewritten
+- **Controller-first focus highlight** — the refresh button and profile pill show a clear focus ring (border + glow + scale) when navigated with the D-pad/stick, alongside full touchscreen support
+- Connection status with TUN IP address display
+- Syncs with Hiddify GUI (stopping VPN from plugin also stops GUI-managed VPN via systemd unit)
+- Background monitor with push events on VPN state changes (polls every 5 s)
+- Log viewer (last 40 lines)
+- Error boundary — render errors shown in UI instead of crashing the plugin
+
+### Plugin Architecture
+
+```
+decky-hiddify/
+├── main.py        # Backend (Python): HiddifyCli subprocess + profile management
+└── src/
+    └── index.tsx  # Frontend (React/TSX): panel UI
+```
+
+**Profile switching** reads profiles from `~/.local/share/app.hiddify.com/db.sqlite`
+and regenerates `current-config.json` via `HiddifyCli build` from the selected
+profile config. This keeps balancer/selector/endpoints handling aligned with the
+desktop client. VPN must be stopped before switching.
+
+**Server switching** parses the selected profile and shows only real user-facing
+servers. Internal Hiddify Core outbounds such as `select`, `balance`, `lowest`,
+`direct`, `block`, and `dns` are hidden. For manual server mode, the plugin builds
+the Game Mode runtime config using only the selected server and its required
+detours. For Hiddify default mode, the service starts with
+`decky-hiddify-settings.json`, including `balancer-strategy: round-robin`.
+
+**GUI sync**: when stopping VPN from the plugin, it queries `systemctl --user list-units 'app-hiddify@*.service'`
+to get the exact transient unit name, then stops it. Also sends `SIGTERM` to the `hiddify` GUI process directly.
+
+---
+
+## Build from Source
+
+### Installer
+
+Three large upstream binaries are **not** included in this repo. Download them from the
+[Hiddify release](https://github.com/hiddify/hiddify-app/releases) and place into `release/installer-src/lib/`:
+
+| File | Size | Source |
+|------|------|--------|
+| `lib/hiddify-core.so` | ~70 MB | Hiddify release (sing-box core) |
+| `lib/libflutter_linux_gtk.so` | ~32 MB | Hiddify release (Flutter runtime) |
+| `lib/libapp.so` | ~15 MB | Hiddify release (Flutter app) |
+
+Then rebuild the self-extracting installer:
+
+```bash
+makeself --nox11 release/installer-src/ Hiddify-linux-x64-v1.3.17.bin "Hiddify VPN v1.3.17" bash setup.sh
+```
+
+### Decky Plugin
+
+```bash
+cd decky-hiddify/
+npm install
+npm run build
+# Output: dist/ — copy to Steam Deck at ~/homebrew/plugins/decky-hiddify/
+```
+
+---
+
+## Sources
+
+- Hiddify App: https://github.com/hiddify/hiddify-app
+- Decky Loader: https://github.com/SteamDeckHomebrew/decky-loader
+- sing-box (hiddify-core): https://github.com/SagerNet/sing-box
